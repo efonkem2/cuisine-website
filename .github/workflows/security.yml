@@ -1,0 +1,199 @@
+name: 🔒 Security Scan
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly on Monday at 2 AM
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'Dockerfile'
+      - '.github/workflows/**'
+
+jobs:
+  security-scan:
+    name: 🔒 Security Analysis
+    runs-on: [self-hosted, linux]
+    
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+      
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: 🔍 Run Trivy vulnerability scanner
+      run: |
+        # Install trivy if not present
+        if ! command -v trivy &> /dev/null; then
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+        fi
+        
+        trivy fs --format sarif --output trivy-results.sarif .
+
+    - name: 📤 Upload Trivy scan results to GitHub Security
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+    - name: 🐳 Build Docker image for scanning
+      run: |
+        docker build -t noelacuisine:security-scan -f ./Dockerfile .
+
+    - name: 🔒 Scan Docker image with Trivy
+      run: |
+        # Install trivy if not present
+        if ! command -v trivy &> /dev/null; then
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+        fi
+        
+        trivy image --format sarif --output docker-trivy-results.sarif noelacuisine:security-scan
+
+    - name: 📤 Upload Docker scan results
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: 'docker-trivy-results.sarif'
+
+    - name: 🔍 Check for secrets
+      run: |
+        # Install TruffleHog if not present
+        if ! command -v trufflehog &> /dev/null; then
+          curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
+        fi
+        
+        trufflehog filesystem . --no-update
+
+    - name: 🌐 Scan web content for vulnerabilities
+      run: |
+        echo "🔍 Scanning for common web vulnerabilities..."
+        
+        # Check for potential XSS in HTML files
+        echo "Checking for potential XSS vulnerabilities..."
+        find src/ -name "*.html" -exec grep -l "innerHTML\|outerHTML\|document.write\|eval(" {} \; > xss-findings.txt || true
+        
+        # Check for insecure external links
+        echo "Checking for insecure external links..."
+        find src/ -name "*.html" -exec grep -l "http://" {} \; > insecure-links.txt || true
+        
+        # Check for missing security attributes
+        echo "Checking for missing security attributes..."
+        find src/ -name "*.html" -exec grep -L "rel=\"noopener\"\|rel=\"noreferrer\"" {} \; > missing-security-attrs.txt || true
+        
+        # Generate security report
+        echo "## 🔒 Web Security Scan Results" > security-report.md
+        echo "" >> security-report.md
+        
+        if [ -s xss-findings.txt ]; then
+          echo "### ⚠️ Potential XSS Vulnerabilities Found:" >> security-report.md
+          cat xss-findings.txt >> security-report.md
+          echo "" >> security-report.md
+        else
+          echo "### ✅ No XSS vulnerabilities found" >> security-report.md
+          echo "" >> security-report.md
+        fi
+        
+        if [ -s insecure-links.txt ]; then
+          echo "### ⚠️ Insecure HTTP Links Found:" >> security-report.md
+          cat insecure-links.txt >> security-report.md
+          echo "" >> security-report.md
+        else
+          echo "### ✅ No insecure HTTP links found" >> security-report.md
+          echo "" >> security-report.md
+        fi
+        
+        if [ -s missing-security-attrs.txt ]; then
+          echo "### ⚠️ Missing Security Attributes:" >> security-report.md
+          echo "Consider adding rel=\"noopener noreferrer\" to external links" >> security-report.md
+          echo "" >> security-report.md
+        else
+          echo "### ✅ Security attributes properly configured" >> security-report.md
+          echo "" >> security-report.md
+        fi
+
+    - name: 📤 Upload security report
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-report
+        path: |
+          security-report.md
+          *-findings.txt
+
+    - name: 📊 Security Summary
+      run: |
+        echo "## 🔒 Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Scan Date**: $(date)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Repository**: ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ -s security-report.md ]; then
+          echo "### 📋 Detailed Results:" >> $GITHUB_STEP_SUMMARY
+          cat security-report.md >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📁 Artifacts:" >> $GITHUB_STEP_SUMMARY
+        echo "- Security report and detailed findings are available in the artifacts section" >> $GITHUB_STEP_SUMMARY
+
+  dependency-check:
+    name: 🔍 Dependency Security Check
+    runs-on: [self-hosted, linux]
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🌐 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: 📦 Check for package.json
+      run: |
+        if [ ! -f package.json ]; then
+          echo "Creating minimal package.json for dependency checking..."
+          cat > package.json << 'EOF'
+        {
+          "name": "noelacuisine",
+          "version": "1.0.0",
+          "description": "NoelaCuisine Website",
+          "dependencies": {},
+          "devDependencies": {
+            "htmlhint": "^1.1.4",
+            "stylelint": "^15.0.0",
+            "eslint": "^8.0.0"
+          }
+        }
+        EOF
+        fi
+
+    - name: 📦 Install dependencies
+      run: npm install
+
+    - name: 🔍 Run npm audit
+      run: |
+        npm audit --audit-level moderate || echo "Audit completed with findings"
+        npm audit --json > npm-audit-results.json || true
+
+    - name: 📊 Generate dependency report
+      run: |
+        echo "## 📦 Dependency Security Report" > dependency-report.md
+        echo "" >> dependency-report.md
+        echo "### NPM Audit Results:" >> dependency-report.md
+        echo '```json' >> dependency-report.md
+        cat npm-audit-results.json >> dependency-report.md || echo "No audit results available" >> dependency-report.md
+        echo '```' >> dependency-report.md
+
+    - name: 📤 Upload dependency report
+      uses: actions/upload-artifact@v4
+      with:
+        name: dependency-report
+        path: |
+          dependency-report.md
+          npm-audit-results.json

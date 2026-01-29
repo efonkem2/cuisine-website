@@ -1,0 +1,121 @@
+name: 🔧 Infrastructure Management
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Infrastructure action to perform'
+        required: true
+        default: 'plan'
+        type: choice
+        options:
+        - plan
+        - apply
+        - destroy
+      environment:
+        description: 'Environment to target'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+
+jobs:
+  infrastructure:
+    name: 🏗️ Terraform ${{ github.event.inputs.action }}
+    runs-on: [self-hosted, linux]
+    environment: ${{ github.event.inputs.environment }}
+    
+    defaults:
+      run:
+        working-directory: ./terraform
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🔧 Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: 🏗️ Setup Terraform
+      run: |
+        # Install terraform if not present
+        if ! command -v terraform &> /dev/null; then
+          wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+          sudo apt update && sudo apt install terraform
+        fi
+
+    - name: 🔧 Terraform Init
+      run: terraform init
+
+    - name: 🏷️ Select Workspace
+      run: |
+        terraform workspace select ${{ github.event.inputs.environment }} || \
+        terraform workspace new ${{ github.event.inputs.environment }}
+
+    - name: 📊 Terraform Plan
+      if: github.event.inputs.action == 'plan' || github.event.inputs.action == 'apply'
+      env:
+        TF_VAR_environment: ${{ github.event.inputs.environment }}
+        TF_VAR_public_key: ${{ secrets.TF_VAR_PUBLIC_KEY }}
+        TF_VAR_github_token: ${{ secrets.TF_VAR_GITHUB_TOKEN }}
+        TF_VAR_github_repo: ${{ github.repository }}
+      run: |
+        terraform plan -out=tfplan
+        terraform show -no-color tfplan > terraform-plan.txt
+
+    - name: 🚀 Terraform Apply
+      if: github.event.inputs.action == 'apply'
+      env:
+        TF_VAR_environment: ${{ github.event.inputs.environment }}
+        TF_VAR_public_key: ${{ secrets.TF_VAR_PUBLIC_KEY }}
+        TF_VAR_github_token: ${{ secrets.TF_VAR_GITHUB_TOKEN }}
+        TF_VAR_github_repo: ${{ github.repository }}
+      run: terraform apply tfplan
+
+    - name: 💥 Terraform Destroy
+      if: github.event.inputs.action == 'destroy'
+      env:
+        TF_VAR_environment: ${{ github.event.inputs.environment }}
+        TF_VAR_public_key: ${{ secrets.TF_VAR_PUBLIC_KEY }}
+        TF_VAR_github_token: ${{ secrets.TF_VAR_GITHUB_TOKEN }}
+        TF_VAR_github_repo: ${{ github.repository }}
+      run: |
+        terraform plan -destroy
+        terraform destroy -auto-approve
+
+    - name: 📤 Upload Plan Artifact
+      if: github.event.inputs.action == 'plan'
+      uses: actions/upload-artifact@v4
+      with:
+        name: terraform-plan-${{ github.event.inputs.environment }}
+        path: terraform/terraform-plan.txt
+
+    - name: 📊 Output Infrastructure Details
+      if: github.event.inputs.action == 'apply'
+      run: |
+        echo "## 🏗️ Infrastructure ${{ github.event.inputs.action }} Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Action**: ${{ github.event.inputs.action }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Environment**: ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Time**: $(date)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ github.event.inputs.action }}" == "apply" ]; then
+          echo "### 🔗 Service URLs:" >> $GITHUB_STEP_SUMMARY
+          echo "- **Nexus Repository**: $(terraform output -raw nexus_url 2>/dev/null || echo 'N/A')" >> $GITHUB_STEP_SUMMARY
+          echo "- **SonarQube**: $(terraform output -raw sonarqube_url 2>/dev/null || echo 'N/A')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Prometheus**: $(terraform output -raw prometheus_url 2>/dev/null || echo 'N/A')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Grafana**: $(terraform output -raw grafana_url 2>/dev/null || echo 'N/A')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📡 SSH Commands:" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          terraform output ssh_connection_commands 2>/dev/null | sed 's/tomap(//' | sed 's/)//' >> $GITHUB_STEP_SUMMARY || echo "# SSH commands not available" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+        fi
