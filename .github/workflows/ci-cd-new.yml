@@ -91,7 +91,7 @@ jobs:
       run: |
         echo "github-runner-ip=$(terraform output -raw github_runner_public_ip)" >> $GITHUB_OUTPUT
         echo "nexus-url=$(terraform output -raw nexus_url)" >> $GITHUB_OUTPUT
-        echo "nexus-registry=$(terraform output -raw nexus_docker_registry)" >> $GITHUB_OUTPUT
+        echo "nexus-registry=$(terraform output -raw github_runner_public_ip):8081/repository/docker-hosted/" >> $GITHUB_OUTPUT
         echo "sonar-url=$(terraform output -raw sonarqube_url)" >> $GITHUB_OUTPUT
         echo "grafana-url=$(terraform output -raw grafana_url)" >> $GITHUB_OUTPUT
 
