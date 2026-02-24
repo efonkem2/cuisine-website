@@ -56,6 +56,19 @@ jobs:
         terraform_version: 1.6.0
         terraform_wrapper: false
 
+    - name: 🔧 Generate SSH Key for EC2 Access
+      run: |
+        # Generate SSH key pair if not exists
+        if [ ! -f ~/.ssh/devops-pipeline ]; then
+          ssh-keygen -t rsa -b 4096 -f ~/.ssh/devops-pipeline -N ""
+          echo "Generated new SSH key pair"
+        fi
+        
+        # Extract public key content
+        PUBLIC_KEY=$(cat ~/.ssh/devops-pipeline.pub)
+        echo "PUBLIC_KEY=$PUBLIC_KEY" >> $GITHUB_ENV
+        echo "SSH public key loaded for Terraform"
+
     - name: 🔧 Terraform Init
       run: terraform init
 
@@ -71,7 +84,7 @@ jobs:
     - name: 📊 Terraform Plan
       env:
         TF_VAR_environment: ${{ github.event.inputs.deploy_environment || (github.ref_name == 'main' && 'production' || 'staging') }}
-        TF_VAR_public_key: ${{ secrets.TF_VAR_PUBLIC_KEY }}
+        TF_VAR_public_key: ${{ env.PUBLIC_KEY }}
         TF_VAR_github_token: ${{ secrets.TF_VAR_GITHUB_TOKEN }}
         TF_VAR_github_repo: ${{ github.repository }}
       run: terraform plan
@@ -80,7 +93,7 @@ jobs:
       if: github.event_name != 'pull_request'
       env:
         TF_VAR_environment: ${{ github.event.inputs.deploy_environment || (github.ref_name == 'main' && 'production' || 'staging') }}
-        TF_VAR_public_key: ${{ secrets.TF_VAR_PUBLIC_KEY }}
+        TF_VAR_public_key: ${{ env.PUBLIC_KEY }}
         TF_VAR_github_token: ${{ secrets.TF_VAR_GITHUB_TOKEN }}
         TF_VAR_github_repo: ${{ github.repository }}
       run: terraform apply -auto-approve
