@@ -22,7 +22,7 @@ env:
 
 jobs:
   # ====================================================================================
-  # INFRASTRUCTURE PROVISIONINGSS
+  # INFRASTRUCTURE PROVISIONINGS
   # ====================================================================================
   provision-infrastructure:
     name:  Provision Infrastructure & Self-Hosted Runner
