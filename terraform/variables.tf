@@ -53,9 +53,20 @@ variable "instance_type_monitoring" {
 }
 
 variable "public_key" {
-  description = "Public key for EC2 instances"
+  description = "Public key content for EC2 instances (not the file path)"
   type        = string
   # Generate with: ssh-keygen -t rsa -b 4096 -f ~/.ssh/devops-pipeline
+  # Then use: cat ~/.ssh/devops-pipeline.pub
+  
+  validation {
+    condition     = length(var.public_key) > 0
+    error_message = "The public_key variable must not be empty. Provide the content of your public key file."
+  }
+  
+  validation {
+    condition     = can(regex("^ssh-(rsa|ed25519|ecdsa)", var.public_key))
+    error_message = "The public_key must be a valid SSH public key starting with ssh-rsa, ssh-ed25519, or ssh-ecdsa."
+  }
 }
 
 variable "github_token" {
