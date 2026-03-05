@@ -6,6 +6,12 @@ terraform/terraform.tfstate.backup
 terraform/terraform.tfvars
 terraform/*.tfplan
 terraform/crash.log
+terraform/Bootstrap/.terraform.lock.hcl
+terraform/Bootstrap/.terraform/providers/registry.terraform.io/hashicorp/aws/5.100.0/windows_amd64/LICENSE.txt
+terraform/Bootstrap/.terraform/providers/registry.terraform.io/hashicorp/aws/5.100.0/windows_amd64/terraform-provider-aws_v5.100.0_x5.exe
+terraform/Bootstrap/backend-bootstrap.tf
+terraform/Bootstrap/terraform.tfstate
+terraform/REMOTE_STATE_SETUP.md
 
 # OS generated files
 .DS_Store
