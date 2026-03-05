@@ -9,11 +9,11 @@ terraform {
   }
   
   backend "s3" {
-    bucket         = "noelacuisine-terraform-state"
-    key            = "infrastructure/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-state-lock"
-    encrypt        = true
+    bucket               = "noelacuisine-terraform-state"
+    key                  = "infrastructure/terraform.tfstate"
+    region               = "us-east-1"
+    dynamodb_table       = "terraform-state-lock"
+    encrypt              = true
     
     # Workspace-specific state files
     workspace_key_prefix = "workspaces"

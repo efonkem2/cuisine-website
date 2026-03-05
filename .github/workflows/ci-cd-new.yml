@@ -56,7 +56,7 @@ jobs:
         terraform_version: 1.6.0
         terraform_wrapper: false
 
-    - name: 🔧 Generate SSH Key for EC2 Access
+    - name:   Generate SSH Key for EC2 Access
       run: |
         # Generate SSH key pair if not exists
         if [ ! -f ~/.ssh/devops-pipeline ]; then
@@ -69,7 +69,7 @@ jobs:
         echo "PUBLIC_KEY=$PUBLIC_KEY" >> $GITHUB_ENV
         echo "SSH public key loaded for Terraform"
 
-    - name: 🔧 Terraform Init
+    - name:   Terraform Init
       run: terraform init
 
     - name: Terraform Validate
@@ -81,7 +81,7 @@ jobs:
       run: |
         terraform workspace select $TF_WORKSPACE || terraform workspace new $TF_WORKSPACE
 
-    - name: 📊 Terraform Plan
+    - name:   Terraform Plan
       env:
         TF_VAR_environment: ${{ github.event.inputs.deploy_environment || (github.ref_name == 'main' && 'production' || 'staging') }}
         TF_VAR_public_key: ${{ env.PUBLIC_KEY }}
@@ -89,7 +89,7 @@ jobs:
         TF_VAR_github_repo: ${{ github.repository }}
       run: terraform plan
 
-    - name: 🚀 Terraform Apply
+    - name:   Terraform Apply
       if: github.event_name != 'pull_request'
       env:
         TF_VAR_environment: ${{ github.event.inputs.deploy_environment || (github.ref_name == 'main' && 'production' || 'staging') }}
@@ -98,7 +98,7 @@ jobs:
         TF_VAR_github_repo: ${{ github.repository }}
       run: terraform apply -auto-approve
 
-    - name: 📊 Get Infrastructure Outputs
+    - name:   Get Infrastructure Outputs
       id: terraform-outputs
       if: github.event_name != 'pull_request'
       run: |
@@ -108,10 +108,10 @@ jobs:
         echo "sonar-url=$(terraform output -raw sonarqube_url)" >> $GITHUB_OUTPUT
         echo "grafana-url=$(terraform output -raw grafana_url)" >> $GITHUB_OUTPUT
 
-    - name: ⏳ Wait for Self-Hosted Runner Registration
+    - name:   Wait for Self-Hosted Runner Registration
       if: github.event_name != 'pull_request'
       run: |
-        echo "🔄 Waiting for GitHub self-hosted runner to register..."
+        echo "  Waiting for GitHub self-hosted runner to register..."
         echo "Runner IP: ${{ steps.terraform-outputs.outputs.github-runner-ip }}"
         
         # Wait up to 10 minutes for runner to register
@@ -123,53 +123,53 @@ jobs:
           if curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
              "https://api.github.com/repos/${{ github.repository }}/actions/runners" | \
              jq -e '.runners[] | select(.status == "online" and (.labels[] | select(.name == "self-hosted")))' > /dev/null; then
-            echo "✅ Self-hosted runner is online and ready!"
+            echo "  Self-hosted runner is online and ready!"
             break
           fi
           
-          echo "⏳ Waiting for runner... (${elapsed}s elapsed)"
+          echo "  Waiting for runner... (${elapsed}s elapsed)"
           sleep $interval
           elapsed=$((elapsed + interval))
         done
         
         if [ $elapsed -ge $timeout ]; then
-          echo "⚠️ Timeout waiting for runner, but continuing..."
+          echo "  Timeout waiting for runner, but continuing..."
         fi
 
   # ====================================================================================
   # SOURCE CODE SCANNING
   # ====================================================================================
   scan-source-code:
-    name: 🔍 Scan Source Code
+    name:   Scan Source Code
     runs-on: [self-hosted, linux]
     needs: provision-infrastructure
     if: github.event_name != 'pull_request' || success()
     
     steps:
-    - name: 📥 Checkout code
+    - name:   Checkout code
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
-    - name: 🔍 Scan src directory structure
+    - name:   Scan src directory structure
       run: |
-        echo "📁 Analyzing source directory structure..."
+        echo "  Analyzing source directory structure..."
         echo "==========================================="
         find src/ -type f -name "*.html" -o -name "*.css" -o -name "*.js" | head -20
         
         echo ""
-        echo "📊 File count by type:"
+        echo "  File count by type:"
         echo "HTML files: $(find src/ -name "*.html" | wc -l)"
         echo "CSS files:  $(find src/ -name "*.css" | wc -l)"
         echo "JS files:   $(find src/ -name "*.js" | wc -l)"
         
         echo ""
-        echo "📏 Total source size:"
+        echo "  Total source size:"
         du -sh src/
 
-    - name: 🔒 Security scan of src directory
+    - name:   Security scan of src directory
       run: |
-        echo "🔍 Running security scans on src directory..."
+        echo "  Running security scans on src directory..."
         
         # Install trivy if not present
         if ! command -v trivy &> /dev/null; then
@@ -180,34 +180,34 @@ jobs:
         trivy fs --format table src/
         trivy fs --format sarif --output src-trivy-results.sarif src/
 
-    - name: 🌐 Web security analysis
+    - name:   Web security analysis
       run: |
-        echo "🌐 Analyzing web security in src directory..."
+        echo "  Analyzing web security in src directory..."
         
         # Check for potential XSS vulnerabilities
-        echo "🔍 Checking for potential XSS vulnerabilities..."
+        echo "  Checking for potential XSS vulnerabilities..."
         find src/ -name "*.html" -exec grep -Hn "innerHTML\|outerHTML\|document.write\|eval(" {} \; || echo "✅ No obvious XSS patterns found"
         
         # Check for insecure external resources
         echo ""
-        echo "🔍 Checking for insecure external resources..."
-        find src/ -name "*.html" -exec grep -Hn "http://" {} \; || echo "✅ No insecure HTTP links found"
+        echo "  Checking for insecure external resources..."
+        find src/ -name "*.html" -exec grep -Hn "http://" {} \; || echo "  No insecure HTTP links found"
         
         # Check for missing security attributes
         echo ""
-        echo "🔍 Checking external links for security attributes..."
+        echo "  Checking external links for security attributes..."
         find src/ -name "*.html" -exec grep -Hn 'target="_blank"' {} \; | \
         while read line; do
           if echo "$line" | grep -q 'rel="noopener'; then
-            echo "✅ $line (has security attributes)"
+            echo "  $line (has security attributes)"
           else
-            echo "⚠️ $line (missing rel='noopener noreferrer')"
+            echo "  $line (missing rel='noopener noreferrer')"
           fi
         done
 
-    - name: 🎨 Code quality analysis
+    - name:   Code quality analysis
       run: |
-        echo "🎨 Running code quality checks on src directory..."
+        echo "  Running code quality checks on src directory..."
         
         # Create minimal package.json if needed
         if [ ! -f package.json ]; then
@@ -226,35 +226,35 @@ jobs:
         fi
         
         # HTML validation
-        echo "📝 Validating HTML files..."
+        echo "  Validating HTML files..."
         npx htmlhint src/*.html || echo "HTML validation completed with warnings"
         
         # CSS validation
         echo ""
-        echo "🎨 Validating CSS files..."
+        echo "  Validating CSS files..."
         npx stylelint "src/*.css" --config-basedir . || echo "CSS validation completed with warnings"
         
         # JS validation
         echo ""
-        echo "🔧 Validating JavaScript files..."
+        echo "  Validating JavaScript files..."
         npx eslint src/*.js --env browser || echo "JS validation completed with warnings"
 
-    - name: 📊 SonarQube Analysis
+    - name:   SonarQube Analysis
       env:
         SONAR_HOST_URL: ${{ needs.provision-infrastructure.outputs.sonar-url }}
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       run: |
-        echo "📊 Running SonarQube analysis on src directory..."
+        echo "  Running SonarQube analysis on src directory..."
         
         # Wait for SonarQube to be ready
-        echo "🔄 Waiting for SonarQube server to be ready..."
+        echo "  Waiting for SonarQube server to be ready..."
         timeout=300
         while [ $timeout -gt 0 ]; do
           if curl -s "${SONAR_HOST_URL}/api/system/status" | grep -q '"status":"UP"'; then
-            echo "✅ SonarQube is ready!"
+            echo " SonarQube is ready!"
             break
           fi
-          echo "⏳ SonarQube not ready yet, waiting... (${timeout}s remaining)"
+          echo " SonarQube not ready yet, waiting... (${timeout}s remaining)"
           sleep 10
           timeout=$((timeout - 10))
         done
@@ -276,7 +276,7 @@ jobs:
           -Dsonar.host.url=${SONAR_HOST_URL} \
           -Dsonar.login=${SONAR_TOKEN} || echo "SonarQube scan completed with issues"
 
-    - name: 📤 Upload scan results
+    - name:   Upload scan results
       uses: actions/upload-artifact@v4
       with:
         name: source-scan-results
@@ -288,7 +288,7 @@ jobs:
   # CONTAINER BUILD & SCAN
   # ====================================================================================
   build-container:
-    name: 🐳 Build Container from Source
+    name:   Build Container from Source
     runs-on: [self-hosted, linux]
     needs: [provision-infrastructure, scan-source-code]
     if: github.event_name != 'pull_request' || success()
@@ -298,36 +298,36 @@ jobs:
       image-tag: ${{ steps.meta.outputs.tags }}
       
     steps:
-    - name: 📥 Checkout code
+    - name:   Checkout code
       uses: actions/checkout@v4
 
-    - name: 🔍 Pre-build source verification
+    - name:   Pre-build source verification
       run: |
-        echo "🔍 Verifying source files before container build..."
+        echo "  Verifying source files before container build..."
         echo "================================================="
         
-        echo "📁 Source directory contents:"
+        echo "  Source directory contents:"
         ls -la src/
         
         echo ""
-        echo "📏 Source file sizes:"
+        echo "  Source file sizes:"
         du -h src/*
         
         echo ""
-        echo "📋 Dockerfile context verification:"
+        echo "  Dockerfile context verification:"
         if [ -f Dockerfile ]; then
-          echo "✅ Dockerfile found"
-          echo "📝 Dockerfile content preview:"
+          echo "  Dockerfile found"
+          echo "  Dockerfile content preview:"
           head -10 Dockerfile
         else
-          echo "❌ Dockerfile not found!"
+          echo "  Dockerfile not found!"
           exit 1
         fi
 
-    - name: 🏗️ Set up Docker Buildx
+    - name:   Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: 🏷️ Extract container metadata
+    - name:   Extract container metadata
       id: meta
       uses: docker/metadata-action@v5
       with:
@@ -338,21 +338,21 @@ jobs:
           type=sha,prefix={{branch}}-
           type=raw,value=latest,enable={{is_default_branch}}
 
-    - name: 🔐 Log in to Nexus Docker Registry
+    - name:   Log in to Nexus Docker Registry
       if: github.event_name != 'pull_request'
       run: |
-        echo "🔐 Logging in to Nexus Docker Registry..."
+        echo "  Logging in to Nexus Docker Registry..."
         
         # Wait for Nexus to be ready
         NEXUS_URL="${{ needs.provision-infrastructure.outputs.nexus-url }}"
-        echo "🔄 Waiting for Nexus to be ready at $NEXUS_URL..."
+        echo "  Waiting for Nexus to be ready at $NEXUS_URL..."
         timeout=300
         while [ $timeout -gt 0 ]; do
           if curl -s -o /dev/null -w "%{http_code}" "$NEXUS_URL" | grep -q "200\|302"; then
-            echo "✅ Nexus is ready!"
+            echo "  Nexus is ready!"
             break
           fi
-          echo "⏳ Nexus not ready yet, waiting... (${timeout}s remaining)"
+          echo "  Nexus not ready yet, waiting... (${timeout}s remaining)"
           sleep 10
           timeout=$((timeout - 10))
         done
@@ -360,10 +360,10 @@ jobs:
         # Extract registry URL without protocol
         NEXUS_REGISTRY=$(echo "${{ needs.provision-infrastructure.outputs.nexus-registry }}" | sed 's|/$||')
         
-        echo "🔑 Logging into Nexus registry: $NEXUS_REGISTRY"
+        echo "  Logging into Nexus registry: $NEXUS_REGISTRY"
         echo "${{ secrets.NEXUS_PASSWORD }}" | docker login $NEXUS_REGISTRY -u "${{ secrets.NEXUS_USERNAME }}" --password-stdin
 
-    - name: 🔨 Build container from source
+    - name:   Build container from source
       id: build
       uses: docker/build-push-action@v5
       with:
@@ -375,9 +375,9 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-    - name: 🔒 Container security scan
+    - name:   Container security scan
       run: |
-        echo "🔒 Running security scan on built container..."
+        echo "  Running security scan on built container..."
         
         # Install trivy if not present
         if ! command -v trivy &> /dev/null; then
@@ -386,14 +386,14 @@ jobs:
         
         # Get the first tag for scanning
         IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n 1)
-        echo "🔍 Scanning image: $IMAGE_TAG"
+        echo "  Scanning image: $IMAGE_TAG"
         
         trivy image --format table $IMAGE_TAG
         trivy image --format sarif --output container-trivy-results.sarif $IMAGE_TAG
 
-    - name: 🔍 Container analysis
+    - name:   Container analysis
       run: |
-        echo "🔍 Analyzing built container..."
+        echo "  Analyzing built container..."
         echo "================================"
         
         # Show built images
@@ -402,20 +402,20 @@ jobs:
         # Get image details
         IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n 1)
         echo ""
-        echo "📊 Container details for: $IMAGE_TAG"
+        echo "  Container details for: $IMAGE_TAG"
         echo "Registry: ${{ needs.provision-infrastructure.outputs.nexus-registry }}"
         echo "Size: $(docker images $IMAGE_TAG --format 'table {{.Size}}' | tail -1)"
         echo "Created: $(docker images $IMAGE_TAG --format 'table {{.CreatedAt}}' | tail -1)"
         
         echo ""
-        echo "📋 Container layers:"
+        echo "  Container layers:"
         docker history $IMAGE_TAG --no-trunc
         
         echo ""
-        echo "🔍 Container file system (src directory):"
+        echo "  Container file system (src directory):"
         docker run --rm $IMAGE_TAG ls -la /usr/share/nginx/html/ || echo "Could not inspect container filesystem"
 
-    - name: 📤 Upload container scan results
+    - name:   Upload container scan results
       uses: actions/upload-artifact@v4
       with:
         name: container-scan-results
@@ -425,21 +425,21 @@ jobs:
   # DEPLOYMENT
   # ====================================================================================
   deploy-application:
-    name: 🚀 Deploy Application
+    name:   Deploy Application
     runs-on: [self-hosted, linux]
     needs: [provision-infrastructure, build-container]
     if: github.event_name != 'pull_request' && success()
     environment: ${{ github.event.inputs.deploy_environment || (github.ref_name == 'main' && 'production' || 'staging') }}
     
     steps:
-    - name: 🚀 Deploy NoelaCuisine Container
+    - name:   Deploy NoelaCuisine Container
       run: |
-        echo "🚀 Deploying NoelaCuisine application..."
+        echo "  Deploying NoelaCuisine application..."
         echo "========================================"
         
         IMAGE_TAG="${{ needs.build-container.outputs.image-tag }}"
-        echo "🐳 Deploying image from Nexus: $IMAGE_TAG"
-        echo "📍 Registry: ${{ needs.provision-infrastructure.outputs.nexus-registry }}"
+        echo "  Deploying image from Nexus: $IMAGE_TAG"
+        echo "  Registry: ${{ needs.provision-infrastructure.outputs.nexus-registry }}"
         
         # Log in to Nexus for pulling
         NEXUS_REGISTRY=$(echo "${{ needs.provision-infrastructure.outputs.nexus-registry }}" | sed 's|/$||')
@@ -457,43 +457,43 @@ jobs:
           -p 8080:80 \
           $(echo "$IMAGE_TAG" | head -n 1)
         
-        echo "✅ Container deployed successfully from Nexus registry!"
-        echo "🌐 Application available at: http://$(curl -s ifconfig.me):8080"
+        echo "  Container deployed successfully from Nexus registry!"
+        echo "  Application available at: http://$(curl -s ifconfig.me):8080"
 
-    - name: 🏥 Health check
+    - name:   Health check
       run: |
-        echo "🏥 Running application health checks..."
+        echo "  Running application health checks..."
         
         # Wait for application to be ready
         sleep 30
         
         # Check if container is running
         if docker ps | grep -q noelacuisine-app; then
-          echo "✅ Container is running"
+          echo "  Container is running"
         else
-          echo "❌ Container is not running"
+          echo "  Container is not running"
           docker logs noelacuisine-app
           exit 1
         fi
         
         # Check HTTP response
         if curl -f -s http://localhost:8080 > /dev/null; then
-          echo "✅ Application responding on port 8080"
+          echo "  Application responding on port 8080"
         else
-          echo "❌ Application not responding"
+          echo "  Application not responding"
           exit 1
         fi
 
-    - name: 📝 Deployment Summary
+    - name:   Deployment Summary
       run: |
-        echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "##   Deployment Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "- **Environment**: ${{ github.event.inputs.deploy_environment || (github.ref_name == 'main' && 'production' || 'staging') }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Image**: ${{ needs.build-container.outputs.image-tag }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Runner IP**: ${{ needs.provision-infrastructure.outputs.github-runner-ip }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 🔗 Service URLs:" >> $GITHUB_STEP_SUMMARY
+        echo "###   Service URLs:" >> $GITHUB_STEP_SUMMARY
         echo "- **Application**: http://${{ needs.provision-infrastructure.outputs.github-runner-ip }}:8080" >> $GITHUB_STEP_SUMMARY
         echo "- **Nexus Repository**: ${{ needs.provision-infrastructure.outputs.nexus-url }}" >> $GITHUB_STEP_SUMMARY
         echo "- **SonarQube**: ${{ needs.provision-infrastructure.outputs.sonar-url }}" >> $GITHUB_STEP_SUMMARY
